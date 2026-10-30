@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from hms.db import DB_PATH  # noqa: E402
 from hms.budget import cached_spend  # noqa: E402
 
 
@@ -13,7 +14,7 @@ def render():
     q1 = json.loads(Path("results/q1/results.json").read_text())
     q2path = Path("results/q2/results.json")
     q2 = json.loads(q2path.read_text()) if q2path.exists() else None
-    with sqlite3.connect("data/hms.sqlite") as conn:
+    with sqlite3.connect(DB_PATH) as conn:
         sizes = {name: conn.execute(f"SELECT COUNT(*) FROM {name}").fetchone()[0]
                  for name in ("markets", "prices", "queries", "headlines_raw",
                               "headlines", "events")}

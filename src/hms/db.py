@@ -1,9 +1,11 @@
 """SQLite store for markets, prices, headlines and aligned events."""
 
+import os
 import sqlite3
 from pathlib import Path
 
-DB_PATH = Path("data/hms.sqlite")
+# Outside the repo by default: cloud-synced folders (e.g. iCloud Documents) corrupt live SQLite.
+DB_PATH = Path(os.environ.get("HMS_DB", Path.home() / ".hms" / "hms.sqlite"))
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS markets (
