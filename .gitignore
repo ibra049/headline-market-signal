@@ -1,0 +1,10 @@
+.venv/
+data/*
+!data/frozen/
+artifacts/
+mlruns/
+mlflow.db
+*.pyc
+__pycache__/
+.env
+*.onnx
