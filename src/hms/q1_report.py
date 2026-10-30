@@ -132,7 +132,18 @@ def main() -> None:
                              f"{ci['ci_high']:+.4f}] |")
         if "preregistered_verdict" in comps:
             lines += ["", f"**Pre-registered verdict:** {comps['preregistered_verdict']}."]
-    lines += ["", "![calibration](calibration.png)", ""]
+    lines += ["", "## Deviations from the pre-registration", "",
+              "- 6 exact duplicate sentences were dropped before splitting (4,217 → 4,211), so "
+              "the same sentence cannot be in both train and test.",
+              "- Sweep run 1 (`lr2e-05_ep2`) used batch 16. The training process was killed when "
+              "the 8 GB machine ran out of memory, so runs 2–4 used batch 8 with gradient "
+              "checkpointing (and eager attention, which MPS needs for it), one process per run. "
+              "max_len stayed 128 and the lr × epochs grid did not change. Batch size is not "
+              "fixed in the pre-registration.",
+              "- Haiku zero-shot settings, not specified in the pre-registration: thinking "
+              "disabled, effort low. Its probabilities put the stated confidence on its label "
+              "and split the rest evenly over the other two labels; this affects ECE only.",
+              "", "![calibration](calibration.png)", ""]
     (RESULTS / "results.md").write_text("\n".join(lines))
     print("\n".join(lines))
 

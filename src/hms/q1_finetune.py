@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import shutil
@@ -31,7 +32,8 @@ from hms.q1_common import (
 
 BASE = "distilroberta-base"
 MAX_LEN = 128
-BATCH = 16
+BATCH = 8  # run 1 (lr2e-05_ep2) was trained with 16 before the out-of-memory kill
+GRAD_CHECKPOINTING = True
 GRID = [(2e-5, 2), (2e-5, 3), (5e-5, 2), (5e-5, 3)]
 SWEEP_DIR = ARTIFACTS / "q1_sweep"
 SELECTED_DIR = ARTIFACTS / "q1_selected_torch"
@@ -69,8 +71,13 @@ def train_one(lr, epochs, train, val, dev):
     torch.manual_seed(SEED)
     tok = AutoTokenizer.from_pretrained(BASE)
     model = AutoModelForSequenceClassification.from_pretrained(
-        BASE, num_labels=len(LABELS), id2label=dict(enumerate(LABELS)), label2id=LABEL2ID
+        BASE, num_labels=len(LABELS), id2label=dict(enumerate(LABELS)), label2id=LABEL2ID,
+        # MPS SDPA kernel has no dropout support under gradient checkpointing; eager is the
+        # same computation.
+        attn_implementation="eager" if GRAD_CHECKPOINTING else None,
     ).to(dev)
+    if GRAD_CHECKPOINTING:
+        model.gradient_checkpointing_enable()
     texts, labels = train["text"].tolist(), train["label"].map(LABEL2ID).tolist()
     steps = epochs * ((len(texts) + BATCH - 1) // BATCH)
     opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01)
@@ -94,35 +101,66 @@ def train_one(lr, epochs, train, val, dev):
     return model, tok, val_f1
 
 
-def main() -> None:
+def run_name(lr, epochs) -> str:
+    return f"lr{lr:g}_ep{epochs}"
+
+
+def finished_run(client, exp_id, name):
+    runs = client.search_runs(
+        [exp_id], f"attributes.run_name = '{name}' and attributes.status = 'FINISHED'"
+    )
+    return runs[0] if runs else None
+
+
+def setup():
     os.chdir(ROOT)
     mlflow.set_tracking_uri("sqlite:///mlflow.db")
-    mlflow.set_experiment("q1-sentiment")
-    train, val, test = load_split("train"), load_split("val"), load_split("test")
+    exp = mlflow.set_experiment("q1-sentiment")
+    return mlflow.MlflowClient(), exp.experiment_id
+
+
+def train_setting(name: str) -> None:
+    """Train one grid setting in this process; skip if its checkpoint and MLflow run exist."""
+    client, exp_id = setup()
+    lr, epochs = next((lr, ep) for lr, ep in GRID if run_name(lr, ep) == name)
+    out_dir = SWEEP_DIR / name
+    done = finished_run(client, exp_id, name)
+    if out_dir.exists() and done is not None:
+        print(f"skip {name}: checkpoint and FINISHED run {done.info.run_id} exist", flush=True)
+        return
+    train, val = load_split("train"), load_split("val")
     dev = device()
+    with mlflow.start_run(run_name=name) as run:
+        mlflow.log_params({"base": BASE, "lr": lr, "epochs": epochs, "batch": BATCH,
+                           "grad_checkpointing": GRAD_CHECKPOINTING, "max_len": MAX_LEN,
+                           "seed": SEED, "device": str(dev)})
+        model, tok, val_f1 = train_one(lr, epochs, train, val, dev)
+        model.save_pretrained(out_dir)
+        tok.save_pretrained(out_dir)
+        mlflow.log_metric("final_val_macro_f1", val_f1)
+        print({"run": name, "run_id": run.info.run_id, "val_macro_f1": val_f1}, flush=True)
+
+
+def select() -> None:
+    """Pick the best finished run on validation macro-F1, score it once on the test set."""
+    client, exp_id = setup()
     sweep = []
     for lr, epochs in GRID:
-        name = f"lr{lr:g}_ep{epochs}"
-        with mlflow.start_run(run_name=name) as run:
-            mlflow.log_params({"base": BASE, "lr": lr, "epochs": epochs, "batch": BATCH,
-                               "max_len": MAX_LEN, "seed": SEED, "device": str(dev)})
-            model, tok, val_f1 = train_one(lr, epochs, train, val, dev)
-            out_dir = SWEEP_DIR / name
-            model.save_pretrained(out_dir)
-            tok.save_pretrained(out_dir)
-            mlflow.log_metric("final_val_macro_f1", val_f1)
-            sweep.append({"run": name, "run_id": run.info.run_id, "lr": lr, "epochs": epochs,
-                          "val_macro_f1": val_f1})
-            print(sweep[-1], flush=True)
-            del model
-            if dev.type == "mps":
-                torch.mps.empty_cache()
-
+        name = run_name(lr, epochs)
+        r = finished_run(client, exp_id, name)
+        if r is None or not (SWEEP_DIR / name).exists():
+            raise SystemExit(f"run {name} is not finished; train it first")
+        sweep.append({"run": name, "run_id": r.info.run_id, "lr": lr, "epochs": epochs,
+                      "batch": int(r.data.params.get("batch", 16)),
+                      "grad_checkpointing": r.data.params.get("grad_checkpointing", "False"),
+                      "val_macro_f1": r.data.metrics["final_val_macro_f1"]})
     best = max(sweep, key=lambda r: r["val_macro_f1"])
     if SELECTED_DIR.exists():
         shutil.rmtree(SELECTED_DIR)
     shutil.copytree(SWEEP_DIR / best["run"], SELECTED_DIR)
 
+    test = load_split("test")
+    dev = device()
     tok = AutoTokenizer.from_pretrained(SELECTED_DIR)
     model = AutoModelForSequenceClassification.from_pretrained(SELECTED_DIR).to(dev)
     texts = test["text"].tolist()
@@ -131,25 +169,39 @@ def main() -> None:
     out = classification_metrics(probs, y)
     out["selected"] = best
     out["latency_s_per_1k_mps"] = time_per_1k(lambda t: predict_proba(model, tok, t, dev), texts, 2)
-    cpu_model = AutoModelForSequenceClassification.from_pretrained(SELECTED_DIR)
+    model = model.cpu()
+    if dev.type == "mps":
+        torch.mps.empty_cache()
     cpu = torch.device("cpu")
     out["latency_s_per_1k_cpu_torch"] = time_per_1k(
-        lambda t: predict_proba(cpu_model, tok, t, cpu), texts, 1)
+        lambda t: predict_proba(model, tok, t, cpu), texts, 1)
     out["cost_usd_per_1k"] = 0.0
+    RESULTS.mkdir(parents=True, exist_ok=True)
     np.save(RESULTS / "probs_finetuned.npy", probs)
 
     with mlflow.start_run(run_id=best["run_id"]):
         mlflow.log_metrics({"test_macro_f1": out["macro_f1"], "test_accuracy": out["accuracy"]})
-        mlflow.pytorch.log_model(model.cpu(), name="model")
-        model_uri = f"runs:/{best['run_id']}/model"
+        mlflow.pytorch.log_model(model, name="model")
     try:
-        reg = mlflow.register_model(model_uri, "q1-sentiment")
+        reg = mlflow.register_model(f"runs:/{best['run_id']}/model", "q1-sentiment")
         out["mlflow_registered"] = {"name": "q1-sentiment", "version": reg.version}
     except Exception as e:  # registry problems are reported, not fatal
         out["mlflow_registered"] = {"error": str(e)[:300]}
     update_results("finetuned_distilroberta", out)
     update_results("sweep", sweep)
     print(json.dumps(out, indent=2))
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    g = ap.add_mutually_exclusive_group(required=True)
+    g.add_argument("--run", choices=[run_name(lr, ep) for lr, ep in GRID])
+    g.add_argument("--select", action="store_true")
+    args = ap.parse_args()
+    if args.run:
+        train_setting(args.run)
+    else:
+        select()
 
 
 if __name__ == "__main__":

@@ -137,4 +137,12 @@ Nothing here is a trading strategy. No fees, spreads, slippage or capacity are
 modeled, and no profit is claimed. All negative results are kept.
 
 ## Amendments
-(none)
+
+**A1 — 2026-10-30, before any Q2 label, score or count was looked at.** Compute limits
+(8 GB laptop: the first Q1 sweep exhausted memory) and a same-day deadline. Changes:
+- Q2 fine-tuning sweep reduced to 2 runs: lr {2e-5, 5e-5} × 2 epochs, picked on validation
+  AUC. The headline-only ablation reuses the selected learning rate.
+- Fine-tuning uses batch 8 with gradient checkpointing, one process per run (Q1 and Q2).
+- Q1: 6 exact duplicate sentences removed before splitting, to prevent train/test leakage.
+- Haiku runs with effort `low`.
+No threshold, metric, split or decision rule changes.

@@ -19,5 +19,20 @@
     "ece": 0.02478278578963277,
     "latency_s_per_1k_cpu": 0.01711267087338905,
     "cost_usd_per_1k": 0.0
+  },
+  "zeroshot_haiku": {
+    "accuracy": 0.8939873417721519,
+    "macro_f1": 0.8841500106898508,
+    "ece": 0.07439873417721518,
+    "model": "claude-haiku-5-5",
+    "settings": "thinking disabled, effort low, json_schema output, cached system prompt",
+    "n_refused": 0,
+    "cost_usd_per_1k": 0.023656455696202533,
+    "mean_input_tokens": 57.02215189873418,
+    "mean_cache_read_tokens": 869.0,
+    "mean_output_tokens": 18.52848101265823,
+    "median_request_latency_s": 0.9944064790179254,
+    "latency_s_per_1k_concurrency8": 139.81202979902022,
+    "latency_s_per_1k_sequential_est": 1110.7506444995458
   }
 }
