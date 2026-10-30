@@ -1,0 +1,143 @@
+name: Evaluate and promote champion
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never cancel a promotion halfway through updating the model and Space.
+concurrency:
+  group: hf-champion-promotion
+  cancel-in-progress: false
+
+jobs:
+  eval-gate:
+    runs-on: ubuntu-latest
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      HF_MODEL_REPO: ${{ vars.HF_MODEL_REPO }}
+      HF_SPACE_REPO: ${{ vars.HF_SPACE_REPO }}
+    steps:
+      - name: Check Hugging Face configuration
+        id: configuration
+        shell: bash
+        run: |
+          if [[ -z "$HF_TOKEN" ]]; then
+            echo "::notice::HF_TOKEN is missing; skipping evaluation and deployment."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            : "${HF_MODEL_REPO:?Set the HF_MODEL_REPO repository variable}"
+            : "${HF_SPACE_REPO:?Set the HF_SPACE_REPO repository variable}"
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.configuration.outputs.enabled == 'true'
+      - uses: actions/setup-python@v5
+        if: steps.configuration.outputs.enabled == 'true'
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-*.txt
+      - name: Install dependencies
+        if: steps.configuration.outputs.enabled == 'true'
+        run: >-
+          python -m pip install -r requirements-dev.txt -r requirements-serve.txt
+          scikit-learn numpy pandas
+      - name: Download candidate and champion
+        if: steps.configuration.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          from huggingface_hub import HfApi, snapshot_download
+          from huggingface_hub.errors import RevisionNotFoundError
+
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          repo = os.environ["HF_MODEL_REPO"]
+          candidate_sha = api.model_info(repo, revision="candidate").sha
+          snapshot_download(
+              repo, revision=candidate_sha, local_dir="artifacts/candidate",
+              token=os.environ["HF_TOKEN"],
+          )
+          try:
+              champion_sha = api.model_info(repo, revision="main").sha
+          except RevisionNotFoundError:
+              champion_sha = ""
+          if champion_sha:
+              snapshot_download(
+                  repo, revision=champion_sha, local_dir="artifacts/champion",
+                  token=os.environ["HF_TOKEN"],
+              )
+              if (Path("artifacts/champion/model.onnx").exists()
+                      and not Path("artifacts/champion/metadata.json").exists()):
+                  raise ValueError("champion model exists but metadata.json is missing")
+          with open(os.environ["GITHUB_ENV"], "a") as stream:
+              stream.write(f"HF_CHAMPION_SHA={champion_sha}\n")
+              stream.write(f"HF_CANDIDATE_SHA={candidate_sha}\n")
+          PY
+      - name: Evaluate frozen Q1 test set
+        id: gate
+        if: steps.configuration.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          python scripts/eval_gate.py \
+            --candidate artifacts/candidate --champion artifacts/champion \
+            --test data/frozen/q1_test.csv --min-delta 0.005 > decision.json
+          cat decision.json
+          python - <<'PY'
+          import json
+          import os
+
+          with open("decision.json") as stream:
+              decision = json.load(stream)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as stream:
+              stream.write(f"promote={str(decision['promote']).lower()}\n")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as stream:
+              stream.write("### Q1 deployment gate\n\n```json\n")
+              stream.write(json.dumps(decision, indent=2) + "\n```\n")
+          PY
+      - name: Promote candidate and tag version
+        if: steps.gate.outputs.promote == 'true'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import shutil
+          from pathlib import Path
+
+          from huggingface_hub import HfApi
+
+          candidate = Path("artifacts/candidate")
+          metadata_path = candidate / "metadata.json"
+          metadata = json.loads(metadata_path.read_text())
+          # Future gates must compare against the measured frozen-test score.
+          metadata["macro_f1"] = json.loads(Path("decision.json").read_text())["candidate_f1"]
+          metadata_path.write_text(json.dumps(metadata, indent=2) + "\n")
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          repo = os.environ["HF_MODEL_REPO"]
+          parent_commit = os.environ["HF_CHAMPION_SHA"]
+          if not parent_commit:
+              parent_commit = os.environ["HF_CANDIDATE_SHA"]
+              api.create_branch(repo, branch="main", revision=parent_commit)
+          commit = api.upload_folder(
+              repo_id=repo, repo_type="model", revision="main", folder_path=candidate,
+              ignore_patterns=[".cache/*", "__pycache__/*", "*.pyc"],
+              delete_patterns=["*"],
+              parent_commit=parent_commit,
+              commit_message=f"Promote champion v{metadata['version']}",
+          )
+          api.create_tag(repo, tag=f"v{metadata['version']}", revision=commit.oid)
+          champion = Path("artifacts/champion")
+          if champion.exists():
+              shutil.rmtree(champion)
+          shutil.copytree(candidate, champion, ignore=shutil.ignore_patterns(".cache"))
+          PY
+      - name: Deploy champion Docker Space
+        if: steps.gate.outputs.promote == 'true'
+        run: bash scripts/deploy_hf.sh

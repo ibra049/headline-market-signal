@@ -1,0 +1,23 @@
+{
+  "data": {
+    "source": "takala/financial_phrasebank Sentences_66Agree (CC BY-NC-SA 3.0)",
+    "n_raw": 4217,
+    "n_after_exact_dedupe": 4211,
+    "n_train": 2947,
+    "n_val": 632,
+    "n_test": 632,
+    "label_counts_test": {
+      "neutral": 380,
+      "positive": 175,
+      "negative": 77
+    },
+    "test_sha256": "8e100c399e1f11b98bb3b157c1f0c53d2a4202e94feead897edb5a0677951486"
+  },
+  "baseline_tfidf_lr": {
+    "accuracy": 0.7990506329113924,
+    "macro_f1": 0.7228421270812104,
+    "ece": 0.02478278578963277,
+    "latency_s_per_1k_cpu": 0.01711267087338905,
+    "cost_usd_per_1k": 0.0
+  }
+}

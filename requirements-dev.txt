@@ -1,0 +1,5 @@
+ruff==0.17.3
+pytest==9.2.0
+httpx==0.28.1
+# Used only by the deployment script and promotion workflow, outside the serving image.
+huggingface-hub==0.36.2
