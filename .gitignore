@@ -6,5 +6,6 @@ mlruns/
 mlflow.db
 *.pyc
 __pycache__/
-.env
+.env*
 *.onnx
+docs/briefs/*.log

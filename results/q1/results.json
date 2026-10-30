@@ -34,5 +34,109 @@
     "median_request_latency_s": 0.9944064790179254,
     "latency_s_per_1k_concurrency8": 139.81202979902022,
     "latency_s_per_1k_sequential_est": 1110.7506444995458
-  }
+  },
+  "optimization": {
+    "onnx_fp32": {
+      "accuracy": 0.884493670886076,
+      "macro_f1": 0.8681710547803233,
+      "ece": 0.04872292747037314,
+      "latency_s_per_1k_cpu": 104.0395991566342,
+      "size_mb": 328.6
+    },
+    "onnx_int8": {
+      "accuracy": 0.8939873417721519,
+      "macro_f1": 0.8705732764219003,
+      "ece": 0.04413426747616338,
+      "latency_s_per_1k_cpu": 23.135549248418332,
+      "size_mb": 82.5
+    },
+    "int8_macro_f1_drop_vs_fp32": -0.002402221641576996,
+    "int8_accepted": true
+  },
+  "bootstrap": {
+    "finetuned_distilroberta_minus_zeroshot_haiku": {
+      "point": -0.01597895590952747,
+      "ci_low": -0.05090642715214274,
+      "ci_high": 0.01891372335620403,
+      "n_resamples": 2000
+    },
+    "onnx_int8_minus_zeroshot_haiku": {
+      "point": -0.013576734267950474,
+      "ci_low": -0.04984146772484936,
+      "ci_high": 0.02473743096078335,
+      "n_resamples": 2000
+    },
+    "baseline_tfidf_lr_minus_zeroshot_haiku": {
+      "point": -0.16130788360864035,
+      "ci_low": -0.21178857582622826,
+      "ci_high": -0.11441229161849632,
+      "n_resamples": 2000
+    },
+    "finetuned_distilroberta_minus_baseline_tfidf_lr": {
+      "point": 0.14532892769911288,
+      "ci_low": 0.10118869034789635,
+      "ci_high": 0.19349628018759363,
+      "n_resamples": 2000
+    },
+    "preregistered_verdict": "fine-tuned matches zero-shot (CI includes 0)"
+  },
+  "finetuned_distilroberta": {
+    "accuracy": 0.884493670886076,
+    "macro_f1": 0.8681710547803233,
+    "ece": 0.048722888802803024,
+    "selected": {
+      "run": "lr2e-05_ep2",
+      "run_id": "9d97f8291c474501bb997eb13fc48042",
+      "lr": 2e-05,
+      "epochs": 2,
+      "batch": 16,
+      "grad_checkpointing": "False",
+      "val_macro_f1": 0.9053783347607478
+    },
+    "latency_s_per_1k_mps": 7.530704707266834,
+    "latency_s_per_1k_cpu_torch": 7.914835640838623,
+    "cost_usd_per_1k": 0.0,
+    "mlflow_registered": {
+      "name": "q1-sentiment",
+      "version": 1
+    }
+  },
+  "sweep": [
+    {
+      "run": "lr2e-05_ep2",
+      "run_id": "9d97f8291c474501bb997eb13fc48042",
+      "lr": 2e-05,
+      "epochs": 2,
+      "batch": 16,
+      "grad_checkpointing": "False",
+      "val_macro_f1": 0.9053783347607478
+    },
+    {
+      "run": "lr2e-05_ep3",
+      "run_id": "4e4819545fe44050abea5d0daf02e9c0",
+      "lr": 2e-05,
+      "epochs": 3,
+      "batch": 8,
+      "grad_checkpointing": "True",
+      "val_macro_f1": 0.8961529681231538
+    },
+    {
+      "run": "lr5e-05_ep2",
+      "run_id": "117fc2a6b2ae49dda8673e96bd5febc9",
+      "lr": 5e-05,
+      "epochs": 2,
+      "batch": 8,
+      "grad_checkpointing": "True",
+      "val_macro_f1": 0.876396654948187
+    },
+    {
+      "run": "lr5e-05_ep3",
+      "run_id": "5f22cc085cbd4602bfd9aaf5a9467ce4",
+      "lr": 5e-05,
+      "epochs": 3,
+      "batch": 8,
+      "grad_checkpointing": "True",
+      "val_macro_f1": 0.8748712580025505
+    }
+  ]
 }

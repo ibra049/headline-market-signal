@@ -22,7 +22,8 @@ def decide(candidate_f1: float, champion_f1: float | None, min_delta: float) -> 
             raise ValueError("F1 must be finite and between 0 and 1")
     if not math.isfinite(min_delta) or min_delta < 0:
         raise ValueError("min_delta must be finite and nonnegative")
-    return champion_f1 is None or candidate_f1 > champion_f1 + min_delta
+    # PREREGISTRATION.md is authoritative: improvement by >= 0.005.
+    return champion_f1 is None or candidate_f1 >= champion_f1 + min_delta
 
 
 def verify_sha256(test_path: str | Path, sha_path: str | Path | None = None) -> None:

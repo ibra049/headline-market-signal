@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 import anthropic
 import numpy as np
 
+from hms.budget import SpendGuard
 from hms.q1_common import (
     LABEL2ID,
     LABELS,
@@ -91,8 +92,15 @@ def load_cache() -> dict:
     return {r["key"]: r for r in map(json.loads, CACHE_FILE.read_text().splitlines())}
 
 
-def classify(client: anthropic.Anthropic, text: str) -> dict:
+def classify(client: anthropic.Anthropic, text: str, budget: SpendGuard) -> dict:
     t = time.perf_counter()
+    with budget.request() as billed:
+        row = _classify(client, text, t)
+        billed[0] = cost_usd(row)
+        return row
+
+
+def _classify(client, text, t):
     resp = client.messages.create(
         model=MODEL,
         max_tokens=256,
@@ -140,12 +148,13 @@ def main() -> None:
     cache = load_cache()
     todo = [t for t in dict.fromkeys(texts) if key_of(t) not in cache]
     client = anthropic.Anthropic(max_retries=6)
+    budget = SpendGuard()
     wall = None
     if todo:
         CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
         t0 = time.perf_counter()
         with ThreadPoolExecutor(CONCURRENCY) as pool, CACHE_FILE.open("a") as fh:
-            for r in pool.map(lambda x: classify(client, x), todo):
+            for r in pool.map(lambda x: classify(client, x, budget), todo):
                 cache[r["key"]] = r
                 fh.write(json.dumps(r) + "\n")
         wall = time.perf_counter() - t0

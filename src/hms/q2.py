@@ -32,7 +32,8 @@ ORDER BY e.t0
 
 
 def load_events(db: Path = DB_PATH) -> pd.DataFrame:
-    df = pd.read_sql_query(EVENTS_SQL, sqlite3.connect(db))
+    with sqlite3.connect(db) as conn:
+        df = pd.read_sql_query(EVENTS_SQL, conn)
     df["y"] = (df["label"] == "up").astype(int)
     return df
 
@@ -90,14 +91,52 @@ def evaluate(df: pd.DataFrame, name: str) -> dict | None:
     if not path.exists():
         return None
     s = pd.read_csv(path)
+    expected = set(df.loc[df.split == "test", "headline_id"])
+    if s.headline_id.duplicated().any() or not expected <= set(s.headline_id):
+        raise ValueError(f"{name}: test scores are duplicated or incomplete")
+    if not np.isfinite(s.score).all() or not s.score.between(0, 1).all():
+        raise ValueError(f"{name}: scores must be finite probabilities")
     test = df[df.split == "test"].merge(s[["headline_id", "score"]], on="headline_id")
     nf = test[test.label != "flat"]
     y, sc = nf["y"].to_numpy(), nf["score"].to_numpy()
+    if len(np.unique(y)) < 2:
+        return {"auc": None, "ci_low": None, "ci_high": None, "p_one_sided": None,
+                "n_test_nonflat": len(nf), "unavailable_reason": "fewer than two classes"}
     out = q2_stats.cluster_bootstrap_auc(y, sc, nf["market_id"].to_numpy())
     out.update(hit_rate=q2_stats.hit_rate(y, sc), ece=q2_stats.ece(y, np.clip(sc, 0, 1)),
                spearman_dp_with_flats=q2_stats.spearman(test["score"], test["dp"]),
                n_test_nonflat=int(len(nf)))
     return out
+
+
+def calibration_plot(df: pd.DataFrame) -> None:
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(6, 5))
+    ax.plot([0, 1], [0, 1], "--", color="grey", label="perfect calibration")
+    plotted = 0
+    for name in PRIMARY + list(ABLATIONS):
+        path = SCORES / f"{name}.csv"
+        if not path.exists():
+            continue
+        test = df[(df.split == "test") & (df.label != "flat")].merge(
+            pd.read_csv(path)[["headline_id", "score"]], on="headline_id", validate="one_to_one")
+        if test.empty:
+            continue
+        bins = np.clip(np.digitize(test.score, np.linspace(0, 1, 11)[1:-1]), 0, 9)
+        means = test.groupby(bins)[["score", "y"]].mean()
+        ax.plot(means.score, means.y, marker="o", label=name)
+        plotted += 1
+    if not plotted:
+        ax.text(0.5, 0.5, "No scored test events available", ha="center")
+    ax.set(xlabel="mean P(up)", ylabel="observed up fraction",
+           title="Q2 reliability (non-flat frozen test events)", xlim=(0, 1), ylim=(0, 1))
+    ax.legend(fontsize=8)
+    fig.tight_layout()
+    fig.savefig(RESULTS / "calibration.png", dpi=120)
+    plt.close(fig)
 
 
 def report() -> None:
@@ -106,20 +145,25 @@ def report() -> None:
     nf = test[test.label != "flat"]
     counts = df.groupby(["split", "label"]).size().unstack(fill_value=0)
     results = {m: evaluate(df, m) for m in PRIMARY + list(ABLATIONS)}
-    primary = {m: r for m, r in results.items() if m in PRIMARY and r is not None}
-    up_share = float(nf["y"].mean())
+    primary = {m: r for m, r in results.items()
+               if m in PRIMARY and r is not None and r["auc"] is not None}
+    up_share = float(nf["y"].mean()) if len(nf) else None
+    data_blocked = len(nf) < 300 or nf["market_id"].nunique() < 30
     out = {
         "decision": q2_stats.decide(primary, len(nf), nf["market_id"].nunique())
-        if len(primary) == len(PRIMARY) else "INCOMPLETE (not all primary models scored)",
+        if data_blocked or len(primary) == len(PRIMARY)
+        else "INCOMPLETE (not all primary models scored)",
         "holm_survivors": q2_stats.holm({m: r["p_one_sided"] for m, r in primary.items()}),
         "n_test_nonflat": int(len(nf)), "n_test_markets": int(nf["market_id"].nunique()),
         "test_up_share": up_share,
-        "naive": {"always_majority_hit_rate": max(up_share, 1 - up_share),
+        "naive": {"always_majority_hit_rate": max(up_share, 1 - up_share)
+                  if up_share is not None else None,
                   "random_auc": 0.5, "random_hit_rate": 0.5},
         "counts": counts.to_dict(), "models": results,
     }
     RESULTS.mkdir(parents=True, exist_ok=True)
-    (RESULTS / "results.json").write_text(json.dumps(out, indent=2, default=str))
+    (RESULTS / "results.json").write_text(json.dumps(out, indent=2, allow_nan=False) + "\n")
+    calibration_plot(df)
     print(json.dumps({k: out[k] for k in ("decision", "n_test_nonflat", "n_test_markets")}))
 
 

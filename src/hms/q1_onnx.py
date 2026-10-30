@@ -94,15 +94,17 @@ def main() -> None:
     res["int8_accepted"] = bool(drop <= 0.01)
     update_results("optimization", res)
 
-    meta = {"version": VERSION, "macro_f1": res["onnx_int8"]["macro_f1"], "labels": LABELS,
-            "base": "distilroberta-base", "quantization": "onnxruntime dynamic int8",
+    chosen = "onnx_int8" if res["int8_accepted"] else "onnx_fp32"
+    chosen_path = int8 if res["int8_accepted"] else fp32
+    meta = {"version": VERSION, "macro_f1": res[chosen]["macro_f1"], "labels": LABELS,
+            "base": "distilroberta-base", "quantization": chosen,
             "test_sha256": (FROZEN / "q1_test.sha256").read_text().strip()}
     for target in ["champion", "candidate"]:
         d = ARTIFACTS / target
         if d.exists():
             shutil.rmtree(d)
         d.mkdir(parents=True)
-        shutil.copy(int8, d / "model.onnx")
+        shutil.copy(chosen_path, d / "model.onnx")
         for f in SELECTED_DIR.iterdir():
             if f.name.startswith(("tokenizer", "special_tokens", "vocab", "merges", "config")):
                 shutil.copy(f, d / f.name)

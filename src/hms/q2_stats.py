@@ -53,7 +53,9 @@ def hit_rate(y: np.ndarray, s: np.ndarray) -> float:
     return float(np.mean((s > 0.5) == (y == 1)))
 
 
-def spearman(s: np.ndarray, dp: np.ndarray) -> float:
+def spearman(s: np.ndarray, dp: np.ndarray) -> float | None:
+    if len(s) < 2 or np.ptp(s) == 0 or np.ptp(dp) == 0:
+        return None  # Undefined, represented as JSON null rather than nonstandard NaN.
     return float(spearmanr(s, dp).statistic)
 
 

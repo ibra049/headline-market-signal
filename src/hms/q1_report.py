@@ -135,11 +135,16 @@ def main() -> None:
     lines += ["", "## Deviations from the pre-registration", "",
               "- 6 exact duplicate sentences were dropped before splitting (4,217 → 4,211), so "
               "the same sentence cannot be in both train and test.",
-              "- Sweep run 1 (`lr2e-05_ep2`) used batch 16. The training process was killed when "
-              "the 8 GB machine ran out of memory, so runs 2–4 used batch 8 with gradient "
+              "- Sweep run 1 (`lr2e-05_ep2`) completed with batch 16. An initial attempt at "
+              "run 2 exhausted the 8 GB machine's memory, so runs 2–4 used batch 8 with gradient "
               "checkpointing (and eager attention, which MPS needs for it), one process per run. "
               "max_len stayed 128 and the lr × epochs grid did not change. Batch size is not "
               "fixed in the pre-registration.",
+              "- Run 1's saved checkpoint reproduced its recorded validation macro-F1 exactly "
+              "(0.9053783347607478). Its MLflow status was repaired from FAILED to FINISHED: "
+              "training had completed; the failure occurred after test metrics were logged "
+              "during model export. No additional sweep run was trained. Results are now saved "
+              "before optional registry work, which uses a separate export run.",
               "- Haiku zero-shot settings, not specified in the pre-registration: thinking "
               "disabled, effort low. Its probabilities put the stated confidence on its label "
               "and split the rest evenly over the other two labels; this affects ECE only.",

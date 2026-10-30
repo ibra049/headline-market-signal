@@ -11,6 +11,8 @@ from pathlib import Path
 import anthropic
 from pydantic import BaseModel, Field
 
+from hms.budget import SpendGuard
+
 MODEL = "claude-haiku-5-5"
 PRICE_IN, PRICE_OUT, PRICE_CACHE_READ = 0.10e-6, 0.50e-6, 0.01e-6  # $ per token
 CACHE_DIR = Path("data/cache")
@@ -67,26 +69,28 @@ class Haiku:
                 row = json.loads(line)
                 self.cache[row["key"]] = row
         self.lock = threading.Lock()
+        self.budget = SpendGuard()
 
     def _call(self, system: str, user: str, schema: type[BaseModel]) -> dict:
         key = hashlib.sha256(f"{system}\n{user}".encode()).hexdigest()
         if key in self.cache:
             return self.cache[key]
         t = time.perf_counter()
-        r = self.client.messages.parse(
-            model=MODEL,
-            max_tokens=2048,
-            system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
-            messages=[{"role": "user", "content": user}],
-            output_format=schema,
-            output_config={"effort": "low"},
-        )
-        u = r.usage
-        cost = ((u.input_tokens or 0) * PRICE_IN + (u.output_tokens or 0) * PRICE_OUT
-                + (u.cache_read_input_tokens or 0) * PRICE_CACHE_READ
-                + (u.cache_creation_input_tokens or 0) * PRICE_IN * 1.25)
+        with self.budget.request() as billed:
+            r = self.client.messages.parse(
+                model=MODEL,
+                max_tokens=2048,
+                system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
+                messages=[{"role": "user", "content": user}],
+                output_format=schema,
+                output_config={"effort": "low"},
+            )
+            u = r.usage
+            billed[0] = ((u.input_tokens or 0) * PRICE_IN + (u.output_tokens or 0) * PRICE_OUT
+                         + (u.cache_read_input_tokens or 0) * PRICE_CACHE_READ
+                         + (u.cache_creation_input_tokens or 0) * PRICE_IN * 1.25)
         row = {"key": key, "user": user, "out": r.parsed_output.model_dump(),
-               "latency_s": time.perf_counter() - t, "cost_usd": cost,
+               "latency_s": time.perf_counter() - t, "cost_usd": billed[0],
                "in_tok": u.input_tokens, "out_tok": u.output_tokens,
                "cache_read": u.cache_read_input_tokens}
         with self.lock:

@@ -146,3 +146,16 @@ modeled, and no profit is claimed. All negative results are kept.
 - Q1: 6 exact duplicate sentences removed before splitting, to prevent train/test leakage.
 - Haiku runs with effort `low`.
 No threshold, metric, split or decision rule changes.
+
+**A2 — 2026-10-30, before any Q2 label was computed.** GDELT DOC API throttled this IP
+(HTTP 429 on most requests; 5 of 450 query windows completed in 2.5 h, about 9 days for the
+full set). Headline source replaced by the Guardian Open Platform Content API (free developer
+key). Changes:
+- Timestamp = `webPublicationDate` (publication time, UTC, second precision) instead of GDELT
+  crawl time. The 15-min lag is unchanged.
+- Same stored per-market query (unchanged text), same window, same cleaning/dedupe rules.
+  One request per market per split period (train / val / test), each returning the 200 most
+  relevant results, so every period gets coverage (developer-key limit: 500 calls/day).
+- Single publisher instead of the whole web; coverage will be thinner and English/UK-leaning.
+- The 847 GDELT headlines already collected are moved to `headlines_raw_gdelt` and not used.
+No threshold, metric, split or decision rule changes.

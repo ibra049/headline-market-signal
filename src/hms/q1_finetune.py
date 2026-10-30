@@ -29,6 +29,7 @@ from hms.q1_common import (
     time_per_1k,
     update_results,
 )
+from hms.runtime import training_guard
 
 BASE = "distilroberta-base"
 MAX_LEN = 128
@@ -179,16 +180,23 @@ def select() -> None:
     RESULTS.mkdir(parents=True, exist_ok=True)
     np.save(RESULTS / "probs_finetuned.npy", probs)
 
-    with mlflow.start_run(run_id=best["run_id"]):
-        mlflow.log_metrics({"test_macro_f1": out["macro_f1"], "test_accuracy": out["accuracy"]})
-        mlflow.pytorch.log_model(model, name="model")
+    # Persist the scientific result before optional artifact/registry operations.
+    update_results("finetuned_distilroberta", out)
+    update_results("sweep", sweep)
+    client.log_metric(best["run_id"], "test_macro_f1", out["macro_f1"])
+    client.log_metric(best["run_id"], "test_accuracy", out["accuracy"])
     try:
-        reg = mlflow.register_model(f"runs:/{best['run_id']}/model", "q1-sentiment")
+        # Export failures must not change the completed training run's status.
+        with mlflow.start_run(run_name="selected-export"):
+            info = mlflow.pytorch.log_model(
+                model, name="model", pip_requirements=[f"torch=={torch.__version__}"],
+                serialization_format="pickle",
+            )
+        reg = mlflow.register_model(info.model_uri, "q1-sentiment")
         out["mlflow_registered"] = {"name": "q1-sentiment", "version": reg.version}
     except Exception as e:  # registry problems are reported, not fatal
         out["mlflow_registered"] = {"error": str(e)[:300]}
     update_results("finetuned_distilroberta", out)
-    update_results("sweep", sweep)
     print(json.dumps(out, indent=2))
 
 
@@ -199,7 +207,8 @@ def main() -> None:
     g.add_argument("--select", action="store_true")
     args = ap.parse_args()
     if args.run:
-        train_setting(args.run)
+        with training_guard():
+            train_setting(args.run)
     else:
         select()
 

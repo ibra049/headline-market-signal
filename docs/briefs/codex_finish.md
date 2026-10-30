@@ -23,16 +23,12 @@ contract, Haiku results already cached in `data/cache/`, run `hms.q1_report` →
 `results/q1/results.md` incl. a "Deviations" section (6 duplicates dropped, batch 8 + grad
 checkpointing, Haiku effort low).
 
-## 2. Collect headlines (the blocker)
-GDELT DOC API returns HTTP 429 most of the time from this IP (1 of 4 requests succeeded at 20 s
-spacing). In `src/hms/gdelt.py`: pace ≥ 30 s between requests, on 429 back off 2 → 4 → 8 min
-(max 6 attempts), log every attempt; keep the resumable `fetch_log` logic; **drop any article
-whose seendate is outside the requested [start, end) window** (one test response came back a day
-past `enddatetime`). Run `python -m hms.gdelt` in the background (nohup) until all 150 markets ×
-3 chunks are `ok`; it may take many hours — that's fine. If after 3 hours fewer than 20% of
-chunks are ok, stop, write the numbers into `docs/STATUS.md`, and report (owner + Claude decide
-on an alternative; Google News RSS is rejected — date-only timestamps leak the move into the
-label).
+## 2. Headlines (DONE by Claude, amendment A2)
+GDELT was abandoned (throttled; see A2). Claude switched to the Guardian API
+(`src/hms/guardian.py`, key in `.env`). Collection is running: `data/guardian.log`, wait until it
+prints `150/150` (pgrep -f hms.guardian empty). Do not touch gdelt.py or rerun collection. Fix the
+ruff E501 on the PERIODS line in guardian.py if ruff flags it. Add a small test for
+`guardian.parse_ts` and the window filter.
 
 ## 3. Build + Q2 models
 `python -m hms.build` (prints split×label counts). Then in order: `python -m hms.q2 baseline`;
@@ -46,7 +42,7 @@ label).
 Q1 latency before/after quantization must be in results. Write `README.md`: question, data
 (sizes from the DB/CSVs), method, results tables for Q1 and Q2 copied from the JSON (no
 rounding in favour of any hypothesis), the pre-registered decision string verbatim, what didn't
-work (Q1 memory crash, GDELT throttling, Google News rejection), one-command run
+work (Q1 memory crash, GDELT throttling -> Guardian switch, Google News rejection), one-command run
 (`scripts/run_pipeline.sh`, `scripts/q1_run.sh`, Q2 commands), a mermaid architecture diagram,
 how the CI eval gate works, licences (PhraseBank CC BY-NC-SA 3.0; Polymarket/GDELT terms), and
 "no profit claims".
@@ -55,3 +51,5 @@ how the CI eval gate works, licences (PhraseBank CC BY-NC-SA 3.0; Polymarket/GDE
 `ruff check .` and `pytest -q` pass. Update `docs/STATUS.md`. Final reply: dataset sizes,
 Q1 macro-F1 ×3, Q2 decision + AUCs with CIs, latency before/after, cost per 1k, number of tests,
 total Anthropic spend, and anything you could not do.
+
+Keep it tight: no extra features beyond this brief. Prefer finishing over polishing.
