@@ -99,7 +99,7 @@ class Haiku:
                 f.write(json.dumps(row) + "\n")
         return row
 
-    def map(self, system: str, users: list[str], schema: type[BaseModel], workers: int = 8):
+    def map(self, system: str, users: list[str], schema: type[BaseModel], workers: int = 16):
         with ThreadPoolExecutor(workers) as ex:
             return list(ex.map(lambda u: self._call(system, u, schema), users))
 

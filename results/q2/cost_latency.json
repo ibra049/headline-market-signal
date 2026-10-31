@@ -1,0 +1,10 @@
+{
+  "baseline_qh": {
+    "latency_s_per_1k": 0.01338573672069197,
+    "cost_usd_per_1k": 0.0
+  },
+  "baseline_h": {
+    "latency_s_per_1k": 0.00806522561387628,
+    "cost_usd_per_1k": 0.0
+  }
+}
