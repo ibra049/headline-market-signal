@@ -6,8 +6,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from hms.db import DB_PATH  # noqa: E402
 from hms.budget import cached_spend  # noqa: E402
+from hms.db import DB_PATH  # noqa: E402
 
 
 def render():

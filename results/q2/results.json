@@ -1,0 +1,90 @@
+{
+  "decision": "INCONCLUSIVE",
+  "holm_survivors": {
+    "haiku_qh": false,
+    "baseline_qh": false,
+    "finetuned_qh": false
+  },
+  "n_test_nonflat": 1101,
+  "n_test_markets": 36,
+  "test_up_share": 0.48501362397820164,
+  "naive": {
+    "always_majority_hit_rate": 0.5149863760217983,
+    "random_auc": 0.5,
+    "random_hit_rate": 0.5
+  },
+  "counts": {
+    "down": {
+      "test": 567,
+      "train": 927,
+      "val": 590
+    },
+    "flat": {
+      "test": 22613,
+      "train": 27505,
+      "val": 24723
+    },
+    "up": {
+      "test": 534,
+      "train": 860,
+      "val": 639
+    }
+  },
+  "models": {
+    "baseline_qh": {
+      "auc": 0.48987046615011665,
+      "ci_low": 0.43495914955759835,
+      "ci_high": 0.5756128505620309,
+      "p_one_sided": 0.571,
+      "n_boot": 2000,
+      "hit_rate": 0.49227974568574023,
+      "ece": 0.10749593213021717,
+      "spearman_dp_with_flats": -0.002981004166806449,
+      "n_test_nonflat": 1101
+    },
+    "haiku_qh": {
+      "auc": 0.5125950366274961,
+      "ci_low": 0.4761557133950395,
+      "ci_high": 0.5453838914649561,
+      "p_one_sided": 0.227,
+      "n_boot": 2000,
+      "hit_rate": 0.5213442325158947,
+      "ece": 0.00956403269754765,
+      "spearman_dp_with_flats": -0.009254017365448232,
+      "n_test_nonflat": 1101
+    },
+    "finetuned_qh": {
+      "auc": 0.4848734055975005,
+      "ci_low": 0.42312474875420986,
+      "ci_high": 0.5653044536280426,
+      "p_one_sided": 0.666,
+      "n_boot": 2000,
+      "hit_rate": 0.5149863760217984,
+      "ece": 0.01894388556766574,
+      "spearman_dp_with_flats": 0.00931479782209291,
+      "n_test_nonflat": 1101
+    },
+    "baseline_h": {
+      "auc": 0.5199254899629432,
+      "ci_low": 0.48590797669231367,
+      "ci_high": 0.5563383044079794,
+      "p_one_sided": 0.1185,
+      "n_boot": 2000,
+      "hit_rate": 0.5231607629427792,
+      "ece": 0.03457179435635118,
+      "spearman_dp_with_flats": 0.004995817688695355,
+      "n_test_nonflat": 1101
+    },
+    "finetuned_h": {
+      "auc": 0.5099065982336893,
+      "ci_low": 0.47142847027344287,
+      "ci_high": 0.543732729964756,
+      "p_one_sided": 0.303,
+      "n_boot": 2000,
+      "hit_rate": 0.5149863760217984,
+      "ece": 0.009413542806539499,
+      "spearman_dp_with_flats": 0.008153442382202182,
+      "n_test_nonflat": 1101
+    }
+  }
+}

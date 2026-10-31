@@ -6,5 +6,21 @@
   "baseline_h": {
     "latency_s_per_1k": 0.00806522561387628,
     "cost_usd_per_1k": 0.0
+  },
+  "haiku_qh": {
+    "cost_usd_per_1k": 0.08503973602091591,
+    "latency_s_per_1k_serial": 965.734765898346,
+    "latency_s_per_1k_wall_8_workers": 60.4437510823563,
+    "n_scored": 23714
+  },
+  "finetuned_qh": {
+    "latency_s_per_1k": 5.818431284138152,
+    "device": "cpu",
+    "cost_usd_per_1k": 0.0
+  },
+  "finetuned_h": {
+    "latency_s_per_1k": 3.683283331543331,
+    "device": "cpu",
+    "cost_usd_per_1k": 0.0
   }
 }
