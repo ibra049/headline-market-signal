@@ -8,7 +8,7 @@ on:
 permissions:
   contents: read
 
-# Never cancel a promotion halfway through updating the model and Space.
+# Never cancel a promotion halfway through updating the champion model.
 concurrency:
   group: hf-champion-promotion
   cancel-in-progress: false
@@ -19,7 +19,6 @@ jobs:
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       HF_MODEL_REPO: ${{ vars.HF_MODEL_REPO }}
-      HF_SPACE_REPO: ${{ vars.HF_SPACE_REPO }}
     steps:
       - name: Check Hugging Face configuration
         id: configuration
@@ -30,7 +29,6 @@ jobs:
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           else
             : "${HF_MODEL_REPO:?Set the HF_MODEL_REPO repository variable}"
-            : "${HF_SPACE_REPO:?Set the HF_SPACE_REPO repository variable}"
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           fi
       - uses: actions/checkout@v4
@@ -138,6 +136,13 @@ jobs:
               shutil.rmtree(champion)
           shutil.copytree(candidate, champion, ignore=shutil.ignore_patterns(".cache"))
           PY
-      - name: Deploy champion Docker Space
+      - name: Redeploy API on Render
         if: steps.gate.outputs.promote == 'true'
-        run: bash scripts/deploy_hf.sh
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK" ]; then
+            echo "::notice::RENDER_DEPLOY_HOOK missing; model promoted but API not redeployed."
+          else
+            curl -fsS -X POST "$RENDER_DEPLOY_HOOK" > /dev/null && echo "Render redeploy triggered"
+          fi

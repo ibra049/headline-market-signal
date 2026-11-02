@@ -114,7 +114,7 @@ flowchart TD
   Q1 --> V[Validation selection]
   V --> O[ONNX fp32 / int8 + latency]
   O --> G[CI frozen-test evaluation gate]
-  G --> A[Champion FastAPI / Docker / HF Space]
+  G --> A[Champion FastAPI / Docker / Render]
   M[Polymarket markets + hourly prices] --> D[SQLite in ~/.hms]
   H[Fixed Haiku queries + Guardian publication timestamps] --> D
   D --> E[Clean / lag / align / label / purge time splits]
@@ -124,9 +124,19 @@ flowchart TD
 
 ## Serving and CI
 
-`serve.app:app` loads `MODEL_DIR` (default `artifacts/champion`) once at startup. `GET /health` reports model version; `POST /predict` accepts 1–256 texts of at most 1,000 characters. Inference uses tokenizers and ONNX Runtime, max length 128, dynamic padding and batch 32. The non-root Docker image exposes port 7860.
+`serve.app:app` loads `MODEL_DIR` (default `artifacts/champion`) once at startup. `GET /health` reports the model version; `POST /predict` accepts 1–256 texts of at most 1,000 characters. Inference uses tokenizers and ONNX Runtime int8, max length 128, dynamic padding and batch 32. The non-root Docker image downloads the champion from the public Hugging Face model repo [`Ibra-049/headline-sentiment`](https://huggingface.co/Ibra-049/headline-sentiment) at build time and listens on `$PORT` (7860 locally).
 
-Pull requests and pushes run Ruff and pytest. On main, the eval-gate workflow downloads HF `candidate` and `main` revisions, verifies the frozen test hash, and measures candidate macro-F1. The frozen protocol requires an improvement of at least 0.005 over champion metadata (or no existing champion). The older MLOps brief described a strict boundary; implementation now follows the authoritative pre-registration's inclusive boundary. A passing candidate is committed and version-tagged in HF, then deployed to the Docker Space. Configure `HF_TOKEN`, `HF_MODEL_REPO`, and `HF_SPACE_REPO`; missing token skips remote evaluation/deployment. This local task does not push or deploy.
+```bash
+docker build -t headline-sentiment-api . && docker run -p 7860:7860 headline-sentiment-api
+curl -X POST localhost:7860/predict -H 'content-type: application/json' \
+  -d '{"texts":["Profit rose 40% and the company raised guidance"]}'
+```
+
+**Model versioning.** The HF model repo holds the `candidate` branch and `main` (= champion, tagged `v1.0.0`, ...).
+
+**CI.** Every push and pull request runs Ruff and pytest (94 tests). On `main`, the eval-gate workflow downloads the HF `candidate` and `main` revisions, checks the frozen Q1 test file against its recorded SHA-256, and scores the candidate. It is promoted only if its macro-F1 beats the champion's by at least 0.005 (pre-registered), or if no champion exists; the promotion is committed to HF `main` and version-tagged. The first run promoted v1.0.0.
+
+**Deploy.** `render.yaml` defines a free-tier Render web service built from the Dockerfile (free instances sleep when idle, so the first request after a pause is slow). After a promotion the eval gate calls the Render deploy hook (`RENDER_DEPLOY_HOOK` secret) so the API rebuilds with the new champion; without the secret the step only logs a notice. Hugging Face Docker Spaces were the first target but need a paid plan, so they were dropped.
 
 ```bash
 .venv/bin/ruff check .

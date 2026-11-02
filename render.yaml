@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: headline-sentiment-api
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: false  # redeployed by the CI eval gate (deploy hook) only after a promotion
