@@ -94,7 +94,8 @@ def test_evaluate_without_champion(monkeypatch, tmp_path, frozen_csv):
     monkeypatch.setattr(eval_gate, "OnnxClassifier", FakeClassifier)
     result = eval_gate.evaluate(tmp_path / "candidate", tmp_path / "absent", frozen_csv, 0.005)
     assert result == {
-        "candidate_f1": 1.0, "champion_f1": None, "delta": None, "promote": True,
+        "candidate_f1": 1.0, "champion_f1": None, "delta": None, "same_model": False,
+        "promote": True,
     }
 
 
@@ -105,6 +106,30 @@ def test_existing_champion_requires_metadata(monkeypatch, tmp_path, frozen_csv):
     (champion / "model.onnx").touch()
     with pytest.raises(ValueError, match="metadata.json is missing"):
         eval_gate.evaluate(tmp_path / "candidate", champion, frozen_csv, 0.005)
+
+
+def test_champion_model_is_rescored_on_this_machine(monkeypatch, tmp_path, frozen_csv):
+    monkeypatch.setattr(eval_gate, "OnnxClassifier", FakeClassifier)
+    champion, candidate = tmp_path / "champion", tmp_path / "candidate"
+    for path, data in ((champion, b"old"), (candidate, b"new")):
+        path.mkdir()
+        (path / "model.onnx").write_bytes(data)
+    (champion / "metadata.json").write_text(json.dumps({"macro_f1": 0.5}))
+    result = eval_gate.evaluate(candidate, champion, frozen_csv, 0.005)
+    assert result["champion_f1"] == 1.0  # live score, not the stored 0.5
+    assert result["promote"] is False
+
+
+def test_identical_model_is_never_promoted(monkeypatch, tmp_path, frozen_csv):
+    monkeypatch.setattr(eval_gate, "OnnxClassifier", FakeClassifier)
+    champion, candidate = tmp_path / "champion", tmp_path / "candidate"
+    for path in (champion, candidate):
+        path.mkdir()
+        (path / "model.onnx").write_bytes(b"same")
+    (champion / "metadata.json").write_text(json.dumps({"macro_f1": 0.0}))
+    result = eval_gate.evaluate(candidate, champion, frozen_csv, 0.005)
+    assert result["same_model"] is True
+    assert result["promote"] is False
 
 
 def test_macro_f1_includes_all_three_labels(monkeypatch, tmp_path, frozen_csv):

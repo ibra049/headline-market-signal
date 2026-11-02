@@ -51,9 +51,40 @@ def evaluate(candidate: Path, champion: Path, test: Path, min_delta: float) -> d
     if any(row["label"] not in LABELS or row["text"] is None for row in rows):
         raise ValueError("test CSV contains an invalid text or label")
 
-    classifier = OnnxClassifier(candidate)
-    predicted = classifier.predict([row["text"] for row in rows])
-    candidate_f1 = float(
+    candidate_f1 = macro_f1(candidate, rows)
+    metadata_path = champion / "metadata.json"
+    champion_model = champion / "model.onnx"
+    if champion_model.exists() and not metadata_path.exists():
+        raise ValueError("champion model exists but metadata.json is missing")
+    same_model = champion_model.exists() and file_sha256(champion_model) == file_sha256(
+        candidate / "model.onnx")
+    if champion_model.exists():
+        # Re-score the champion on this machine: int8 kernels differ across CPUs, so a stored
+        # score from another runner is not comparable (0.872 vs 0.881 for the same model).
+        champion_f1 = macro_f1(champion, rows)
+    elif metadata_path.exists():
+        champion_f1 = float(json.loads(metadata_path.read_text())["macro_f1"])
+    else:
+        champion_f1 = None
+    return {
+        "candidate_f1": candidate_f1,
+        "champion_f1": champion_f1,
+        "delta": candidate_f1 - champion_f1 if champion_f1 is not None else None,
+        "same_model": same_model,
+        "promote": not same_model and decide(candidate_f1, champion_f1, min_delta),
+    }
+
+
+def file_sha256(path: Path) -> str | None:
+    if not path.exists():
+        return None
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def macro_f1(model_dir: Path, rows: list[dict]) -> float:
+    predicted = OnnxClassifier(model_dir).predict([row["text"] for row in rows])
+    return float(
         f1_score(
             [row["label"] for row in rows],
             [prediction["label"] for prediction in predicted],
@@ -62,20 +93,6 @@ def evaluate(candidate: Path, champion: Path, test: Path, min_delta: float) -> d
             zero_division=0,
         )
     )
-    metadata_path = champion / "metadata.json"
-    if (champion / "model.onnx").exists() and not metadata_path.exists():
-        raise ValueError("champion model exists but metadata.json is missing")
-    champion_f1 = (
-        float(json.loads(metadata_path.read_text())["macro_f1"])
-        if metadata_path.exists()
-        else None
-    )
-    return {
-        "candidate_f1": candidate_f1,
-        "champion_f1": champion_f1,
-        "delta": candidate_f1 - champion_f1 if champion_f1 is not None else None,
-        "promote": decide(candidate_f1, champion_f1, min_delta),
-    }
 
 
 def main() -> int:
